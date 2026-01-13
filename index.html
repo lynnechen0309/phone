@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>民視政治組電話簿</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 字型設定 -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+        body { font-family: 'Noto Sans TC', sans-serif; }
+        
+        /* 自定義動畫 */
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-down { animation: fadeInDown 0.3s ease-out; }
+        
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up { animation: fadeInUp 0.3s ease-out; }
+        
+        @keyframes scaleIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .animate-scale-in { animation: scaleIn 0.2s ease-out; }
+    </style>
+
+    <!-- Import Map: 定義模組來源 -->
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "lucide-react": "https://esm.sh/lucide-react@0.303.0",
+            "firebase/app": "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js",
+            "firebase/auth": "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js",
+            "firebase/firestore": "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js"
+        }
+    }
+    </script>
+
+    <!-- Babel: 用於瀏覽器內編譯 JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-slate-50">
+    <div id="root"></div>
+
+    <!-- 主程式邏輯 -->
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useMemo } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { 
+            Search, Plus, Trash2, Edit2, Phone, User, 
+            Briefcase, FolderPlus, ChevronRight, ChevronDown, 
+            MoreVertical, X, Upload, Save, Lock, Menu, Folder,
+            CheckCircle, AlertCircle, Tag, Layers, Copy, FileText,
+            Palette, Settings, GripVertical, Loader2
+        } from 'lucide-react';
+
+        // --- Firebase Imports ---
+        import { initializeApp } from 'firebase/app';
+        // 移除 signInWithCustomToken 以避免 token 衝突
+        import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+        import { 
+            getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, 
+            onSnapshot, setDoc, writeBatch, query, orderBy 
+        } from 'firebase/firestore';
+
+        // --- Firebase Configuration ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyAm1uVnuDFYgwhbV6glzMTholH8bprx1UQ",
+            authDomain: "ftvphone.firebaseapp.com",
+            projectId: "ftvphone",
+            storageBucket: "ftvphone.firebasestorage.app",
+            messagingSenderId: "786164045340",
+            appId: "1:786164045340:web:f570728c9929a845a5b1d9"
+        };
+
+        // Initialize Firebase
+        let app;
+        try {
+            app = initializeApp(firebaseConfig);
+        } catch (e) {
+            // 如果已經初始化過，就忽略
+        }
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const APP_ID = 'ftv_politics_v1';
+
+        // --- 顏色調色盤配置 ---
+        const COLOR_PALETTES = [
+            { id: 'slate',   name: '石墨灰', bg: 'bg-slate-50',   text: 'text-slate-700',   border: 'border-slate-200',  icon: 'text-slate-500',  indicator: 'bg-slate-500', hover: 'hover:border-slate-300', ring: 'ring-slate-500' },
+            { id: 'red',     name: '赤紅',   bg: 'bg-red-50',     text: 'text-red-700',     border: 'border-red-200',    icon: 'text-red-500',    indicator: 'bg-red-500',   hover: 'hover:border-red-300',   ring: 'ring-red-500' },
+            { id: 'orange',  name: '橙橘',   bg: 'bg-orange-50',  text: 'text-orange-700',  border: 'border-orange-200', icon: 'text-orange-500', indicator: 'bg-orange-500', hover: 'hover:border-orange-300', ring: 'ring-orange-500' },
+            { id: 'amber',   name: '琥珀',   bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',  icon: 'text-amber-500',  indicator: 'bg-amber-500', hover: 'hover:border-amber-300', ring: 'ring-amber-500' },
+            { id: 'yellow',  name: '檸黃',   bg: 'bg-yellow-50',  text: 'text-yellow-700',  border: 'border-yellow-200', icon: 'text-yellow-500', indicator: 'bg-yellow-400', hover: 'hover:border-yellow-300', ring: 'ring-yellow-400' },
+            { id: 'lime',    name: '萊姆',   bg: 'bg-lime-50',    text: 'text-lime-700',    border: 'border-lime-200',   icon: 'text-lime-600',   indicator: 'bg-lime-500',   hover: 'hover:border-lime-300',   ring: 'ring-lime-500' },
+            { id: 'green',   name: '草綠',   bg: 'bg-green-50',   text: 'text-green-700',   border: 'border-green-200',  icon: 'text-green-500',  indicator: 'bg-green-500',  hover: 'hover:border-green-300',  ring: 'ring-green-500' },
+            { id: 'emerald', name: '翠綠',   bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', icon: 'text-emerald-500', indicator: 'bg-emerald-500', hover: 'hover:border-emerald-300', ring: 'ring-emerald-500' },
+            { id: 'teal',    name: '藍綠',   bg: 'bg-teal-50',    text: 'text-teal-700',    border: 'border-teal-200',   icon: 'text-teal-500',   indicator: 'bg-teal-500',    hover: 'hover:border-teal-300',    ring: 'ring-teal-500' },
+            { id: 'cyan',    name: '青色',   bg: 'bg-cyan-50',    text: 'text-cyan-700',    border: 'border-cyan-200',   icon: 'text-cyan-500',   indicator: 'bg-cyan-500',    hover: 'hover:border-cyan-300',    ring: 'ring-cyan-500' },
+            { id: 'sky',     name: '天藍',   bg: 'bg-sky-50',     text: 'text-sky-700',     border: 'border-sky-200',    icon: 'text-sky-500',    indicator: 'bg-sky-500',     hover: 'hover:border-sky-300',     ring: 'ring-sky-500' },
+            { id: 'blue',    name: '寶藍',   bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200',   icon: 'text-blue-500',   indicator: 'bg-blue-500',    hover: 'hover:border-blue-300',    ring: 'ring-blue-500' },
+            { id: 'indigo',  name: '靛藍',   bg: 'bg-indigo-50',  text: 'text-indigo-700',  border: 'border-indigo-200', icon: 'text-indigo-500', indicator: 'bg-indigo-500',  hover: 'hover:border-indigo-300',  ring: 'ring-indigo-500' },
+            { id: 'violet',  name: '紫羅蘭', bg: 'bg-violet-50',  text: 'text-violet-700',  border: 'border-violet-200', icon: 'text-violet-500', indicator: 'bg-violet-500',  hover: 'hover:border-violet-300',  ring: 'ring-violet-500' },
+            { id: 'fuchsia', name: '桃紅',   bg: 'bg-fuchsia-50', text: 'text-fuchsia-700', border: 'border-fuchsia-200', icon: 'text-fuchsia-500', indicator: 'bg-fuchsia-500', hover: 'hover:border-fuchsia-300', ring: 'ring-fuchsia-500' },
+        ];
+
+        const DEFAULT_PALETTE = COLOR_PALETTES.find(p => p.id === 'slate');
+
+        // --- 初始數據 (用於資料庫初始化) ---
+        const SEED_CATEGORIES = [
+            { id: 'cat-1', name: '立法院', parentId: null, color: 'indigo', order: 0 },
+            { id: 'cat-2', name: '民進黨團', parentId: 'cat-1', color: 'green', order: 0 },
+            { id: 'cat-3', name: '國民黨團', parentId: 'cat-1', color: 'blue', order: 1 },
+            { id: 'cat-4', name: '民眾黨團', parentId: 'cat-1', color: 'cyan', order: 2 },
+            { id: 'cat-5', name: '行政院', parentId: null, color: 'teal', order: 1 },
+            { id: 'uncategorized', name: '未分類', parentId: null, color: 'slate', order: 999 },
+        ];
+
+        const SEED_CONTACTS = [
+            { title: '總召', name: '柯建銘', phone: '0912-345-678', note: '立法院長青樹', categoryId: 'cat-2' },
+            { title: '院長', name: '韓國瑜', phone: '0988-777-666', note: '立法院長', categoryId: 'cat-1' },
+            { title: '發言人', name: '陳智菡', phone: '0911-222-333', note: '戰狼小姐姐', categoryId: 'cat-4' },
+        ];
+
+        const DELETE_PASSWORD = '123456';
+
+        function PhoneBookApp() {
+            // --- State ---
+            const [user, setUser] = useState(null);
+            const [contacts, setContacts] = useState([]);
+            const [categories, setCategories] = useState([]);
+            const [loading, setLoading] = useState(true);
+            
+            const [searchQuery, setSearchQuery] = useState('');
+            const [selectedCategory, setSelectedCategory] = useState('all');
+            const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+            const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+            const [toast, setToast] = useState(null); 
+            const [expandedCategories, setExpandedCategories] = useState([]);
+            const [draggedCategory, setDraggedCategory] = useState(null);
+            
+            // Modals state
+            const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+            const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+            const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+            const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+            
+            // Form/Action state
+            const [editingContact, setEditingContact] = useState(null);
+            const [editingCategory, setEditingCategory] = useState(null);
+            
+            const [contactForm, setContactForm] = useState({ title: '', name: '', phone: '', note: '', categoryId: 'uncategorized' });
+            const [categoryForm, setCategoryForm] = useState({ name: '', parentId: '', color: 'indigo' });
+            
+            const [importText, setImportText] = useState('');
+            const [deleteTargetId, setDeleteTargetId] = useState(null);
+            const [deletePasswordInput, setDeletePasswordInput] = useState('');
+            const [deleteError, setDeleteError] = useState(false);
+
+            // --- Firebase Effects ---
+
+            // 1. Authentication
+            useEffect(() => {
+                const initAuth = async () => {
+                    try {
+                        // 強制使用匿名登入
+                        await signInAnonymously(auth);
+                    } catch (e) {
+                        console.error("Auth failed:", e);
+                        if (e.code === 'auth/admin-restricted-operation' || e.code === 'auth/operation-not-allowed') {
+                            showToast("請在 Firebase Console 啟用「匿名登入」", "error");
+                        } else if (e.code === 'auth/unauthorized-domain') {
+                            showToast("請將此網域加入 Firebase 授權清單", "error");
+                        } else {
+                            showToast(`登入失敗: ${e.message}`, "error");
+                        }
+                    }
+                };
+                initAuth();
+                return onAuthStateChanged(auth, setUser);
+            }, []);
+
+            // 2. Data Subscriptions & Seeding
+            useEffect(() => {
+                if (!user) return;
+
+                // References
+                const catsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'categories');
+                const contactsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'contacts');
+
+                // Subscribe Categories
+                const unsubCats = onSnapshot(query(catsRef), async (snapshot) => {
+                    const cats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    
+                    // Seeding logic: If empty, populate initial data
+                    if (cats.length === 0) {
+                        console.log("Seeding database...");
+                        const batch = writeBatch(db);
+                        
+                        // Seed Categories
+                        SEED_CATEGORIES.forEach(cat => {
+                            const docRef = doc(catsRef, cat.id); 
+                            batch.set(docRef, { ...cat });
+                        });
+
+                        // Seed Contacts
+                        SEED_CONTACTS.forEach(contact => {
+                            const docRef = doc(contactsRef); 
+                            batch.set(docRef, { ...contact, createdAt: Date.now() });
+                        });
+
+                        await batch.commit();
+                        showToast("資料庫初始化完成");
+                    } else {
+                        // Sort by order
+                        cats.sort((a, b) => (a.order || 0) - (b.order || 0));
+                        setCategories(cats);
+                    }
+                    setLoading(false);
+                }, (error) => {
+                    console.error("Categories snapshot error:", error);
+                });
+
+                // Subscribe Contacts
+                const unsubContacts = onSnapshot(query(contactsRef, orderBy('createdAt', 'desc')), (snapshot) => {
+                    const contactsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setContacts(contactsData);
+                }, (error) => {
+                    console.error("Contacts snapshot error:", error);
+                });
+
+                return () => {
+                    unsubCats();
+                    unsubContacts();
+                };
+            }, [user]);
+
+            // --- Effects ---
+
+            useEffect(() => {
+                if (selectedCategory === 'all') return;
+                const cat = categories.find(c => c.id === selectedCategory);
+                if (cat && cat.parentId) {
+                    setExpandedCategories(prev => {
+                        if (!prev.includes(cat.parentId)) {
+                            return [...prev, cat.parentId];
+                        }
+                        return prev;
+                    });
+                }
+            }, [selectedCategory, categories]);
+
+            // --- Helpers ---
+            
+            const showToast = (message, type = 'success') => {
+                setToast({ message, type });
+                setTimeout(() => setToast(null), 3000);
+            };
+
+            const copyTextToClipboard = (text, successMessage) => {
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    showToast(successMessage, 'success');
+                } catch (err) {
+                    showToast('複製失敗，請手動複製', 'error');
+                }
+                document.body.removeChild(textArea);
+            };
+
+            const handleCopyPhone = (phone) => {
+                copyTextToClipboard(phone, `已複製電話：${phone}`);
+            };
+
+            const handleCopyFullInfo = (contact) => {
+                const info = `${contact.title} ${contact.name} ${contact.phone}`;
+                copyTextToClipboard(info, `已複製資訊：${info}`);
+            };
+
+            const getCategoryStyle = (colorId) => {
+                return COLOR_PALETTES.find(p => p.id === colorId) || DEFAULT_PALETTE;
+            };
+
+            const getCategoryInfo = (categoryId) => {
+                const cat = categories.find(c => c.id === categoryId);
+                if (!cat) return { name: '未知分類', path: '未知', style: DEFAULT_PALETTE };
+
+                const style = getCategoryStyle(cat.color);
+                let path = cat.name;
+
+                if (cat.parentId) {
+                    const parent = categories.find(p => p.id === cat.parentId);
+                    if (parent) {
+                        path = `${parent.name} / ${cat.name}`;
+                    }
+                }
+                
+                return { name: cat.name, path, style };
+            };
+
+            const categoryTree = useMemo(() => {
+                const roots = categories.filter(c => !c.parentId);
+                return roots.map(root => ({
+                    ...root,
+                    style: getCategoryStyle(root.color),
+                    children: categories
+                        .filter(c => c.parentId === root.id)
+                        .map(child => ({
+                            ...child,
+                            style: getCategoryStyle(child.color)
+                        }))
+                }));
+            }, [categories]);
+
+            const currentCategoryName = useMemo(() => {
+                if (selectedCategory === 'all') return '所有聯絡人';
+                const cat = categories.find(c => c.id === selectedCategory);
+                return cat ? cat.name : '未知分類';
+            }, [selectedCategory, categories]);
+
+            const filteredContacts = useMemo(() => {
+                let result = contacts;
+                if (searchQuery) {
+                    const q = searchQuery.toLowerCase();
+                    result = result.filter(c => 
+                        c.name.toLowerCase().includes(q) || 
+                        c.phone.includes(q) || 
+                        c.title.toLowerCase().includes(q) ||
+                        (c.note && c.note.toLowerCase().includes(q))
+                    );
+                }
+                if (selectedCategory !== 'all') {
+                    const targetIds = [selectedCategory];
+                    const children = categories.filter(c => c.parentId === selectedCategory).map(c => c.id);
+                    targetIds.push(...children);
+                    result = result.filter(c => targetIds.includes(c.categoryId));
+                }
+                return result;
+            }, [contacts, searchQuery, selectedCategory, categories]);
+
+            // --- Handlers ---
+
+            const toggleCategoryExpand = (id, e) => {
+                if (e) e.stopPropagation();
+                setExpandedCategories(prev => {
+                    if (prev.includes(id)) {
+                        return prev.filter(item => item !== id);
+                    } else {
+                        return [...prev, id];
+                    }
+                });
+            };
+
+            const handleDragStart = (e, category) => {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('application/json', JSON.stringify({ id: category.id, parentId: category.parentId }));
+                setDraggedCategory(category);
+            };
+
+            const handleDragOver = (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+            };
+
+            const handleDrop = async (e, targetCategory) => {
+                e.preventDefault();
+                setDraggedCategory(null);
+                if (!user) return;
+
+                try {
+                    const data = JSON.parse(e.dataTransfer.getData('application/json'));
+                    const sourceId = data.id;
+                    const sourceParentId = data.parentId;
+                    const targetId = targetCategory.id;
+                    const targetParentId = targetCategory.parentId;
+
+                    if (sourceId === targetId) return;
+                    if (sourceParentId !== targetParentId) {
+                        showToast('只能在相同層級內排序', 'error');
+                        return;
+                    }
+
+                    const siblings = categories
+                        .filter(c => c.parentId === sourceParentId)
+                        .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+                    const sourceIndex = siblings.findIndex(c => c.id === sourceId);
+                    const targetIndex = siblings.findIndex(c => c.id === targetId);
+
+                    if (sourceIndex === -1 || targetIndex === -1) return;
+
+                    const newOrder = [...siblings];
+                    const [movedItem] = newOrder.splice(sourceIndex, 1);
+                    newOrder.splice(targetIndex, 0, movedItem);
+
+                    const batch = writeBatch(db);
+                    newOrder.forEach((cat, index) => {
+                        const ref = doc(db, 'artifacts', APP_ID, 'public', 'data', 'categories', cat.id);
+                        batch.update(ref, { order: index });
+                    });
+
+                    await batch.commit();
+                    showToast('排序已同步');
+
+                } catch (err) {
+                    console.error("Drop error", err);
+                    showToast('排序失敗', 'error');
+                }
+            };
+
+            const handleSaveContact = async (e) => {
+                e.preventDefault();
+                if (!user) return;
+
+                try {
+                    const collectionRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'contacts');
+                    
+                    if (editingContact) {
+                        await updateDoc(doc(collectionRef, editingContact.id), contactForm);
+                        showToast('聯絡人已更新');
+                    } else {
+                        await addDoc(collectionRef, { ...contactForm, createdAt: Date.now() });
+                        showToast('聯絡人已新增');
+                    }
+                    closeContactModal();
+                } catch (err) {
+                    console.error(err);
+                    showToast('儲存失敗', 'error');
+                }
+            };
+
+            const handleSaveCategory = async (e) => {
+                e.preventDefault();
+                if (!user) return;
+
+                try {
+                    const collectionRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'categories');
+
+                    if (editingCategory) {
+                        await updateDoc(doc(collectionRef, editingCategory.id), categoryForm);
+                        showToast('分類已更新');
+                    } else {
+                        const siblings = categories.filter(c => c.parentId === (categoryForm.parentId || null));
+                        const newOrder = siblings.length > 0 ? Math.max(...siblings.map(c => c.order || 0)) + 1 : 0;
+                        
+                        await addDoc(collectionRef, { ...categoryForm, order: newOrder });
+                        showToast('分類已建立');
+                    }
+                    
+                    setCategoryForm({ name: '', parentId: '', color: 'indigo' });
+                    setEditingCategory(null);
+                    setIsCategoryModalOpen(false);
+                } catch (err) {
+                    console.error(err);
+                    showToast('儲存失敗', 'error');
+                }
+            };
+
+            const handleImport = async () => {
+                if (!user) return;
+                const lines = importText.split('\n');
+                const batch = writeBatch(db);
+                const collectionRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'contacts');
+                
+                let count = 0;
+                lines.forEach(line => {
+                    if (!line.trim()) return;
+                    const parts = line.split(/[,，\s\t]+/).filter(p => p.trim() !== '');
+                    if (parts.length >= 3) {
+                        const newDocRef = doc(collectionRef);
+                        batch.set(newDocRef, {
+                            title: parts[0],
+                            name: parts[1],
+                            phone: parts[2],
+                            note: parts.slice(3).join(' ') || '匯入資料',
+                            categoryId: 'uncategorized',
+                            createdAt: Date.now()
+                        });
+                        count++;
+                    }
+                });
+
+                if (count > 0) {
+                    try {
+                        await batch.commit();
+                        setImportText('');
+                        setIsImportModalOpen(false);
+                        showToast(`成功匯入 ${count} 筆資料`, 'success');
+                    } catch (err) {
+                        showToast('匯入失敗', 'error');
+                    }
+                } else {
+                    showToast('格式無法辨識！請檢查格式：職稱 姓名 電話', 'error');
+                }
+            };
+
+            const initiateDelete = (id) => {
+                setDeleteTargetId(id);
+                setDeletePasswordInput('');
+                setDeleteError(false);
+                setIsPasswordModalOpen(true);
+            };
+
+            const confirmDelete = async () => {
+                if (deletePasswordInput === DELETE_PASSWORD) {
+                    if (!user || !deleteTargetId) return;
+                    
+                    try {
+                        const ref = doc(db, 'artifacts', APP_ID, 'public', 'data', 'contacts', deleteTargetId);
+                        await deleteDoc(ref);
+                        
+                        setIsPasswordModalOpen(false);
+                        setDeleteTargetId(null);
+                        showToast('資料已刪除', 'success');
+                    } catch (err) {
+                        showToast('刪除失敗', 'error');
+                    }
+                } else {
+                    setDeleteError(true);
+                }
+            };
+
+            const openEditModal = (contact) => {
+                setEditingContact(contact);
+                setContactForm({ ...contact });
+                setIsContactModalOpen(true);
+            };
+
+            const closeContactModal = () => {
+                setIsContactModalOpen(false);
+                setEditingContact(null);
+                setContactForm({ title: '', name: '', phone: '', note: '', categoryId: 'uncategorized' });
+            };
+
+            const openCategoryEditModal = (e, category) => {
+                e.stopPropagation();
+                setEditingCategory(category);
+                setCategoryForm({ 
+                    name: category.name, 
+                    parentId: category.parentId || '', 
+                    color: category.color || 'slate' 
+                });
+                setIsCategoryModalOpen(true);
+            };
+
+            const openCategoryCreateModal = () => {
+                setEditingCategory(null);
+                setCategoryForm({ name: '', parentId: '', color: 'indigo' });
+                setIsCategoryModalOpen(true);
+            }
+
+            const handleCategorySelect = (id) => {
+                setSelectedCategory(id);
+                setIsCategoryDropdownOpen(false);
+                
+                const hasChildren = categories.some(c => c.parentId === id);
+                if (hasChildren) {
+                    toggleCategoryExpand(id);
+                }
+
+                if (window.innerWidth < 768) {
+                    setIsSidebarOpen(false);
+                }
+            };
+
+            // --- Render ---
+            if (loading) {
+                return (
+                    <div className="h-screen flex items-center justify-center bg-slate-50 text-slate-400 gap-2">
+                        <Loader2 className="animate-spin" /> 載入資料庫中...
+                    </div>
+                );
+            }
+
+            return (
+                <div className="h-screen bg-slate-50 text-slate-800 font-sans selection:bg-indigo-100 flex overflow-hidden relative">
+                    {/* Toast */}
+                    {toast && (
+                        <div className={`fixed top-4 right-4 z-[100] px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-fade-in-down border ${
+                            toast.type === 'success' ? 'bg-white border-green-100 text-green-700' : 'bg-white border-rose-100 text-rose-600'
+                        }`}>
+                            {toast.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
+                            <span className="font-medium">{toast.message}</span>
+                        </div>
+                    )}
+
+                    {/* Mobile Overlay */}
+                    {isSidebarOpen && (
+                        <div 
+                            className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-30 md:hidden"
+                            onClick={() => setIsSidebarOpen(false)}
+                        />
+                    )}
+
+                    {/* Dropdown Overlay */}
+                    {isCategoryDropdownOpen && (
+                        <div 
+                            className="fixed inset-0 z-30 bg-transparent"
+                            onClick={() => setIsCategoryDropdownOpen(false)}
+                        />
+                    )}
+
+                    {/* Sidebar */}
+                    <aside className={`fixed md:relative z-50 h-full bg-white border-r border-slate-200 shadow-xl md:shadow-none transition-all duration-300 ease-in-out flex flex-col ${isSidebarOpen ? 'w-64 translate-x-0' : 'w-0 -translate-x-full md:translate-x-0 md:w-0 overflow-hidden opacity-0 md:opacity-100'}`}>
+                        <div className="w-64 flex flex-col h-full"> 
+                            <div className="p-6 border-b border-slate-100 bg-gradient-to-r from-slate-800 to-slate-700 text-white flex justify-between items-center">
+                                <div>
+                                    <h1 className="text-xl font-bold flex items-center gap-2">
+                                        <Phone size={20} /> 民視政治組電話簿
+                                    </h1>
+                                    <p className="text-slate-300 text-xs mt-1 opacity-80">分類管理</p>
+                                </div>
+                                <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-white/80 hover:text-white">
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div className="p-4 flex-1 overflow-y-auto">
+                                <div className="mb-6">
+                                    <button onClick={() => handleCategorySelect('all')} className={`w-full text-left px-4 py-3 rounded-xl transition-all duration-200 flex items-center gap-3 ${selectedCategory === 'all' ? 'bg-slate-100 text-slate-800 font-medium shadow-sm ring-1 ring-slate-200' : 'hover:bg-slate-50 text-slate-600'}`}>
+                                        <User size={18} /> 所有聯絡人
+                                    </button>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <div className="px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex justify-between items-center">
+                                        分類目錄
+                                        <button onClick={openCategoryCreateModal} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-indigo-600 transition-colors" title="新增分類">
+                                            <Plus size={14} />
+                                        </button>
+                                    </div>
+                                    
+                                    {categoryTree.map(cat => {
+                                        const isExpanded = expandedCategories.includes(cat.id);
+                                        const hasChildren = cat.children.length > 0;
+                                        
+                                        return (
+                                            <div key={cat.id} className="mb-1" draggable={cat.id !== 'uncategorized'} onDragStart={(e) => handleDragStart(e, cat)} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, cat)}>
+                                                <div className={`group relative flex items-center rounded-lg transition-colors ${draggedCategory?.id === cat.id ? 'opacity-40 border-dashed border-2 border-indigo-300' : ''}`}>
+                                                    {cat.id !== 'uncategorized' && (
+                                                        <div className="absolute left-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-50 hover:opacity-100 cursor-grab active:cursor-grabbing p-1 text-slate-400 z-10">
+                                                            <GripVertical size={14} />
+                                                        </div>
+                                                    )}
+                                                    
+                                                    <button onClick={() => handleCategorySelect(cat.id)} className={`w-full text-left pl-7 pr-4 py-2 rounded-lg text-sm flex items-center justify-between transition-colors ${selectedCategory === cat.id ? 'bg-white font-medium shadow-sm border' : 'text-slate-600 hover:bg-slate-50'}`} style={selectedCategory === cat.id ? { borderColor: 'var(--tw-ring-color)', color: 'var(--tw-text-opacity)' } : {}}>
+                                                        <span className="flex items-center gap-2">
+                                                            {hasChildren && (
+                                                                <span className="p-0.5 rounded-sm hover:bg-slate-200 text-slate-400 transition-colors" onClick={(e) => toggleCategoryExpand(cat.id, e)}>
+                                                                    {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                                                </span>
+                                                            )}
+                                                            {!hasChildren && <span className="w-4" />}
+                                                            <span className={`w-2.5 h-2.5 rounded-full ${cat.style.indicator}`}></span>
+                                                            {cat.name}
+                                                        </span>
+                                                        {selectedCategory === cat.id && <div className={`w-1.5 h-1.5 rounded-full ${cat.style.indicator}`}></div>}
+                                                    </button>
+                                                    
+                                                    {cat.id !== 'uncategorized' && (
+                                                        <button onClick={(e) => openCategoryEditModal(e, cat)} className="absolute right-2 opacity-0 group-hover:opacity-100 p-1 bg-white shadow-sm border border-slate-100 rounded text-slate-400 hover:text-indigo-600 transition-all z-10" title="編輯分類">
+                                                            <Edit2 size={12} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                
+                                                {hasChildren && isExpanded && (
+                                                    <div className="ml-4 pl-4 border-l border-slate-100 mt-1 space-y-1 animate-fade-in-down">
+                                                        {cat.children.map(sub => (
+                                                            <div key={sub.id} className="group relative flex items-center" draggable onDragStart={(e) => handleDragStart(e, sub)} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, sub)}>
+                                                                <div className="absolute left-[-4px] top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-50 hover:opacity-100 cursor-grab active:cursor-grabbing p-1 text-slate-400 z-10">
+                                                                    <GripVertical size={12} />
+                                                                </div>
+                                                                <button onClick={() => handleCategorySelect(sub.id)} className={`w-full text-left pl-6 pr-3 py-1.5 rounded-md text-sm transition-colors flex items-center gap-2 ${selectedCategory === sub.id ? `font-medium ${cat.style.bg} ${cat.style.text}` : 'text-slate-500 hover:text-slate-800'}`}>
+                                                                    <span className={`w-1.5 h-1.5 rounded-full ${sub.style.indicator} opacity-50`}></span>
+                                                                    {sub.name}
+                                                                </button>
+                                                                <button onClick={(e) => openCategoryEditModal(e, sub)} className="absolute right-2 opacity-0 group-hover:opacity-100 p-1 bg-white shadow-sm border border-slate-100 rounded text-slate-400 hover:text-indigo-600 transition-all z-10 scale-90" title="編輯分類">
+                                                                    <Edit2 size={12} />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+
+                    {/* Main Content */}
+                    <main className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50/50 w-full">
+                        <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 p-4 md:px-6 md:py-4 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-40">
+                            <div className="flex items-center w-full md:w-auto gap-3">
+                                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className={`p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-600 ${isSidebarOpen ? 'bg-slate-100 text-indigo-600' : ''}`}>
+                                    <Menu size={20} />
+                                </button>
+                                <div className="flex flex-col relative z-50">
+                                    <span className="text-xs text-slate-400 font-medium">目前檢視</span>
+                                    <button onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)} className="text-sm font-bold text-slate-700 flex items-center gap-1 hover:text-indigo-600 transition-colors cursor-pointer outline-none">
+                                        {currentCategoryName} 
+                                        <ChevronDown size={14} className={`opacity-50 transition-transform duration-200 ${isCategoryDropdownOpen ? 'rotate-180' : ''}`}/>
+                                    </button>
+                                    {isCategoryDropdownOpen && (
+                                        <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-100 py-2 animate-fade-in-up origin-top-left overflow-y-auto max-h-[60vh]">
+                                            <button onClick={() => handleCategorySelect('all')} className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 flex items-center gap-2 ${selectedCategory === 'all' ? 'text-indigo-600 font-bold bg-indigo-50' : 'text-slate-700'}`}>
+                                                <User size={16} /> 所有聯絡人
+                                            </button>
+                                            <div className="h-px bg-slate-100 my-1" />
+                                            {categoryTree.map(cat => (
+                                                <div key={cat.id}>
+                                                    <button onClick={() => handleCategorySelect(cat.id)} className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 ${selectedCategory === cat.id ? 'text-indigo-600 font-bold' : 'text-slate-700'}`}>
+                                                        <span className={`w-2 h-2 rounded-full ${cat.style.indicator}`}></span>
+                                                        {cat.name}
+                                                    </button>
+                                                    {cat.children.map(sub => (
+                                                        <button key={sub.id} onClick={() => handleCategorySelect(sub.id)} className={`w-full text-left pl-8 pr-4 py-1.5 text-sm hover:bg-slate-50 text-slate-500 ${selectedCategory === sub.id ? 'text-indigo-600 font-medium' : ''}`}>
+                                                            └ {sub.name}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="flex-1 w-full md:max-w-md mx-4">
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <input type="text" placeholder="搜尋姓名、電話、職稱..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-slate-100 border-none rounded-lg text-slate-700 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all outline-none placeholder:text-slate-400" />
+                                </div>
+                            </div>
+                            <div className="flex gap-2 w-full md:w-auto">
+                                <button onClick={() => setIsImportModalOpen(true)} className="px-3 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center justify-center gap-2 font-medium text-xs shadow-sm">
+                                    <Upload size={14} /> 匯入
+                                </button>
+                                <button onClick={() => { setEditingContact(null); setIsContactModalOpen(true); }} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-500/30 transition-all flex items-center justify-center gap-2 font-medium text-xs shadow-md whitespace-nowrap">
+                                    <Plus size={16} /> 新增
+                                </button>
+                            </div>
+                        </header>
+
+                        <div className="flex-1 overflow-y-auto p-4 md:p-6">
+                            {filteredContacts.length === 0 ? (
+                                <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                                    <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+                                        <User size={40} className="opacity-20" />
+                                    </div>
+                                    <p className="text-base font-medium text-slate-500">沒有符合的聯絡人</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+                                    {filteredContacts.map(contact => {
+                                        const { path: catPath, style: catStyle } = getCategoryInfo(contact.categoryId);
+                                        return (
+                                            <div key={contact.id} className={`group bg-white rounded-xl p-4 shadow-sm border border-slate-100 hover:shadow-md transition-all duration-200 relative overflow-hidden flex flex-col h-full ${catStyle.hover}`}>
+                                                <div className={`absolute top-0 left-0 w-1 h-full ${catStyle.indicator} opacity-70 group-hover:opacity-100 transition-opacity`} />
+                                                <div className="pl-3 flex flex-col h-full">
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <span className="inline-block px-2 py-0.5 bg-slate-50 text-slate-500 text-[10px] font-bold uppercase tracking-wide rounded border border-slate-200 transition-colors">
+                                                            {contact.title}
+                                                        </span>
+                                                        <div className="flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                                            <button onClick={() => handleCopyFullInfo(contact)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors" title="複製完整資訊"><FileText size={14} /></button>
+                                                            <button onClick={() => openEditModal(contact)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors" title="編輯"><Edit2 size={14} /></button>
+                                                            <button onClick={() => initiateDelete(contact.id)} className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded transition-colors" title="刪除"><Trash2 size={14} /></button>
+                                                        </div>
+                                                    </div>
+                                                    <h3 className="text-base font-bold text-slate-800 mb-0.5">{contact.name}</h3>
+                                                    <div className="flex items-center gap-1.5 text-slate-500 mb-2 font-mono text-xs group/phone">
+                                                        <Phone size={12} className="shrink-0" /> 
+                                                        <span>{contact.phone}</span>
+                                                        <button onClick={(e) => { e.stopPropagation(); handleCopyPhone(contact.phone); }} className="p-1 hover:bg-slate-100 text-slate-400 hover:text-indigo-600 rounded transition-colors ml-auto md:opacity-0 md:group-hover/phone:opacity-100" title="複製電話">
+                                                            <Copy size={12} />
+                                                        </button>
+                                                    </div>
+                                                    <p className="text-xs text-slate-400 line-clamp-2 mb-3 flex-1">{contact.note || '-'}</p>
+                                                    <div className="pt-3 border-t border-slate-50 mt-auto">
+                                                        <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium ${catStyle.bg} ${catStyle.text} ${catStyle.border} border max-w-full`}>
+                                                            <Tag size={10} className={`shrink-0 ${catStyle.icon}`} />
+                                                            <span className="truncate" title={catPath}>{catPath}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </main>
+
+                    {/* Modals */}
+                    {isContactModalOpen && (
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl animate-fade-in-up p-6">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h2 className="text-xl font-bold text-slate-800">{editingContact ? '編輯聯絡人' : '新增聯絡人'}</h2>
+                                    <button onClick={closeContactModal} className="text-slate-400 hover:text-slate-600"><X size={24} /></button>
+                                </div>
+                                <form onSubmit={handleSaveContact} className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-500 mb-1">頭銜</label>
+                                            <input required className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 outline-none" value={contactForm.title} onChange={e => setContactForm({...contactForm, title: e.target.value})} placeholder="例如：經理" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-500 mb-1">姓名</label>
+                                            <input required className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 outline-none" value={contactForm.name} onChange={e => setContactForm({...contactForm, name: e.target.value})} placeholder="輸入姓名" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">電話</label>
+                                        <input required className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 outline-none font-mono" value={contactForm.phone} onChange={e => setContactForm({...contactForm, phone: e.target.value})} placeholder="09XX-XXX-XXX" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">分類</label>
+                                        <select className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 outline-none bg-white" value={contactForm.categoryId} onChange={e => setContactForm({...contactForm, categoryId: e.target.value})}>
+                                            {categoryTree.map(root => (
+                                                <React.Fragment key={root.id}>
+                                                    <option value={root.id} className="font-bold text-slate-900 bg-slate-50">
+                                                        {root.name}
+                                                    </option>
+                                                    {root.children.map(child => (
+                                                        <option key={child.id} value={child.id} className="text-slate-600">
+                                                            {`\u00A0\u00A0\u00A0\u00A0└ ${child.name}`}
+                                                        </option>
+                                                    ))}
+                                                </React.Fragment>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">備註</label>
+                                        <textarea className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none h-24" value={contactForm.note} onChange={e => setContactForm({...contactForm, note: e.target.value})} placeholder="相關備註..." />
+                                    </div>
+                                    <button type="submit" className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 shadow-lg shadow-indigo-500/30 flex justify-center items-center gap-2"><Save size={18} /> 儲存資料</button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {isCategoryModalOpen && (
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl animate-fade-in-up p-6">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h2 className="text-xl font-bold text-slate-800">{editingCategory ? '編輯分類' : '新增分類'}</h2>
+                                    <button onClick={() => setIsCategoryModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={24} /></button>
+                                </div>
+                                <form onSubmit={handleSaveCategory} className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">分類名稱</label>
+                                        <input required className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 outline-none" value={categoryForm.name} onChange={e => setCategoryForm({...categoryForm, name: e.target.value})} placeholder="輸入名稱" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">上層分類 (選填)</label>
+                                        <select className="w-full px-4 py-2 rounded-lg border border-slate-200 bg-white" value={categoryForm.parentId} onChange={e => setCategoryForm({...categoryForm, parentId: e.target.value})} disabled={editingCategory && categories.some(c => c.parentId === editingCategory.id)}>
+                                            <option value="">無 (設為主要分類)</option>
+                                            {categories.filter(c => !c.parentId && c.id !== 'uncategorized' && c.id !== editingCategory?.id).map(c => (
+                                                <option key={c.id} value={c.id}>{c.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-2">分類主題色</label>
+                                        <div className="grid grid-cols-5 gap-3">
+                                            {COLOR_PALETTES.map(palette => (
+                                                <button key={palette.id} type="button" onClick={() => setCategoryForm({ ...categoryForm, color: palette.id })} className={`w-full aspect-square rounded-xl flex items-center justify-center transition-all border-2 relative group/color ${palette.bg} ${categoryForm.color === palette.id ? `border-indigo-600 ring-2 ring-indigo-200 ${palette.text}` : 'border-transparent hover:scale-110 shadow-sm'}`}>
+                                                    <div className={`w-3 h-3 rounded-full ${palette.indicator}`}></div>
+                                                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover/color:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">{palette.name}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <button type="submit" className="w-full py-3 bg-slate-800 text-white rounded-xl font-medium hover:bg-slate-900 mt-4">{editingCategory ? '更新分類' : '建立分類'}</button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {isImportModalOpen && (
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-fade-in-up p-6">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h2 className="text-xl font-bold text-slate-800">批次匯入</h2>
+                                    <button onClick={() => setIsImportModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={24} /></button>
+                                </div>
+                                <p className="text-sm text-slate-500 mb-3 bg-slate-50 p-3 rounded-lg border border-slate-100">格式：<code className="bg-white px-1 rounded border border-slate-200 text-indigo-600">職稱 姓名 電話 [備註]</code></p>
+                                <textarea className="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 outline-none h-48 font-mono text-sm" placeholder={'經理 王小明 0912333444\n工程師 李大華 0988111222'} value={importText} onChange={e => setImportText(e.target.value)} />
+                                <button type="button" onClick={handleImport} className="w-full mt-4 py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 shadow-lg shadow-indigo-500/30">開始匯入</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {isPasswordModalOpen && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60] flex items-center justify-center p-4">
+                            <div className="bg-white rounded-2xl w-full max-w-xs shadow-2xl animate-scale-in p-8 text-center">
+                                <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4 text-rose-500"><Lock size={32} /></div>
+                                <h3 className="text-xl font-bold text-slate-800 mb-2">安全驗證</h3>
+                                <p className="text-slate-500 text-sm mb-6">刪除資料需要管理員權限</p>
+                                <input type="password" autoFocus className={`w-full px-4 py-3 text-center text-lg tracking-widest rounded-xl border-2 outline-none mb-2 ${deleteError ? 'border-rose-300 bg-rose-50' : 'border-slate-200 focus:border-indigo-500'}`} value={deletePasswordInput} onChange={e => setDeletePasswordInput(e.target.value)} />
+                                {deleteError && <p className="text-rose-500 text-xs font-medium mb-4">密碼錯誤，請重試</p>}
+                                <div className="grid grid-cols-2 gap-3 mt-4">
+                                    <button onClick={() => setIsPasswordModalOpen(false)} className="py-2.5 rounded-lg text-slate-500 font-medium hover:bg-slate-100">取消</button>
+                                    <button onClick={confirmDelete} className="py-2.5 rounded-lg bg-rose-500 text-white font-medium hover:bg-rose-600 shadow-lg shadow-rose-500/30">確認刪除</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<PhoneBookApp />);
+    </script>
+</body>
+</html>
